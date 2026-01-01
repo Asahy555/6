@@ -10,20 +10,9 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
-      build: {
-        cssCodeSplit: true,
-        rollupOptions: {
-          output: {
-            assetFileNames: 'assets/[name].[hash][extname]',
-            chunkFileNames: 'assets/[name].[hash].js',
-            entryFileNames: 'assets/[name].[hash].js'
-          }
-        }
-      },
       define: {
-        'process.env.YANDEX_API_KEY': JSON.stringify(env.YANDEX_API_KEY),
-        'process.env.YANDEX_FOLDER_ID': JSON.stringify(env.YANDEX_FOLDER_ID),
-        'process.env.YANDEX_SPEECH_KEY': JSON.stringify(env.YANDEX_SPEECH_KEY)
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },
       resolve: {
         alias: {
