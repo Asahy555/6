@@ -792,13 +792,17 @@ const App = () => {
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [isError, setIsError] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => {
-    const loadData = async () => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+      setIsError(false);
       try {
-        // Sequentially load to prevent IDB race conditions during mounting
         const loadedChars = await storage.get<Character[]>('ai_rpg_chars');
         const loadedChats = await storage.get<ChatSession[]>('ai_rpg_chats');
         const loadedGallery = await storage.get<GalleryItem[]>('ai_rpg_gallery');
@@ -807,15 +811,15 @@ const App = () => {
         if (loadedChats) setChats(loadedChats);
         if (loadedGallery) setGallery(loadedGallery);
         
+        setIsDataLoaded(true);
       } catch (e) {
         console.error("Critical storage error:", e);
-        setGlobalError("Failed to load data. Your browser storage might be full or restricted.");
-      } finally {
-        setIsDataLoaded(true); 
+        // Do NOT set isDataLoaded to true if we failed to load, 
+        // to prevent overwriting existing data with empty state.
+        setGlobalError("Не удалось загрузить данные. Проверьте настройки браузера.");
+        setIsError(true);
       }
-    };
-    loadData();
-  }, []);
+  };
 
   const triggerSave = async (key: string, data: any) => {
       setSaveStatus('saving');
@@ -825,7 +829,6 @@ const App = () => {
           setTimeout(() => setSaveStatus('idle'), 2000);
       } catch (e) {
           console.error("Save error:", e);
-          // Don't show global error for background saves to avoid annoyance, rely on IDB console logs
       }
   };
   
@@ -1209,7 +1212,22 @@ const App = () => {
     }
   };
 
-  if (!isDataLoaded && !globalError) {
+  if (isError) {
+      return (
+          <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white p-6 text-center">
+              <div className="bg-red-900/50 p-6 rounded-2xl border border-red-700 max-w-md">
+                  <h2 className="text-xl font-bold mb-4">Ошибка загрузки данных</h2>
+                  <p className="text-gray-300 mb-6">{globalError || "Не удалось получить доступ к хранилищу."}</p>
+                  <Button onClick={() => loadData()} variant="primary" className="w-full">
+                      Попробовать снова
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-4">Не беспокойтесь, ваши данные в безопасности. Мы просто не можем их сейчас прочитать.</p>
+              </div>
+          </div>
+      );
+  }
+
+  if (!isDataLoaded) {
       return (
           <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
               <div className="flex flex-col items-center gap-4">
@@ -1222,7 +1240,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
-        {globalError && (
+        {globalError && !isError && (
              <div className="bg-red-900/90 text-white p-3 text-center fixed top-0 w-full z-50 backdrop-blur border-b border-red-700 animate-fade-in flex justify-between items-center px-6">
                  <span>⚠️ {globalError}</span>
                  <button onClick={() => setGlobalError(null)} className="text-red-200 hover:text-white">✕</button>
