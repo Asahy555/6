@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Character, ChatSession, Message, Page, GalleryItem } from './types';
 import { Button } from './components/Button';
-import { generateImage, streamCharacterResponse, getPlotSummary, generateBackground, generateVideo, analyzeCharacterEvolution, generateSpeech } from './services/geminiService';
+import { generateImage, streamCharacterResponse, getPlotSummary, generateBackground, generateVideo, analyzeCharacterEvolution, generateSpeech, testHybridService, getServiceInfo } from './services/hybridAIService';
 import { storage } from './services/storage';
 
 // --- Utils ---
@@ -78,6 +78,13 @@ const CoinIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://ww
 const PaperclipIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>;
 const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 const ScaleIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 3v18"/><path d="M6 18h12"/><path d="M6 8h12"/></svg>;
+
+// === HYBRID AI SERVICE ICONS ===
+const RussianIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+const GeminiIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>;
+const HybridIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M7 3v4a2 2 0 0 1-2 2H3l-2 2v11a2 2 0 0 0 2 2h2l2-2h6l2 2h2a2 2 0 0 0 2-2v-4"/><path d="M11 3l-2 4"/><path d="M17 3l2 4"/><path d="M12 7v4l4 4"/></svg>;
+const AutoIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>;
+const SettingsIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m11-7h-6m-6 0H1m15.5-8.5l-4.24 4.24M8.74 8.74L4.5 4.5m15 0l-4.24 4.24M8.74 15.26L4.5 19.5"/></svg>;
 
 // --- Helper Components ---
 
@@ -792,17 +799,28 @@ const App = () => {
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [isError, setIsError] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  
+  // === HYBRID AI SERVICE STATE ===
+  const [hybridMode, setHybridMode] = useState<'auto' | 'sfw' | 'nsfw'>('auto');
+  const [serviceStatus, setServiceStatus] = useState<{
+    russian: { healthy: boolean; latency?: number };
+    gemini: { healthy: boolean; latency?: number };
+    active: 'russian' | 'gemini' | 'unknown';
+    lastCheck: number;
+  }>({
+    russian: { healthy: false },
+    gemini: { healthy: false },
+    active: 'unknown',
+    lastCheck: 0
+  });
+  const [showServiceInfo, setShowServiceInfo] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-      setIsError(false);
+    const loadData = async () => {
       try {
+        // Sequentially load to prevent IDB race conditions during mounting
         const loadedChars = await storage.get<Character[]>('ai_rpg_chars');
         const loadedChats = await storage.get<ChatSession[]>('ai_rpg_chats');
         const loadedGallery = await storage.get<GalleryItem[]>('ai_rpg_gallery');
@@ -811,15 +829,38 @@ const App = () => {
         if (loadedChats) setChats(loadedChats);
         if (loadedGallery) setGallery(loadedGallery);
         
-        setIsDataLoaded(true);
       } catch (e) {
         console.error("Critical storage error:", e);
-        // Do NOT set isDataLoaded to true if we failed to load, 
-        // to prevent overwriting existing data with empty state.
-        setGlobalError("Не удалось загрузить данные. Проверьте настройки браузера.");
-        setIsError(true);
+        setGlobalError("Failed to load data. Your browser storage might be full or restricted.");
+      } finally {
+        setIsDataLoaded(true); 
       }
+    };
+    loadData();
+  }, []);
+
+  // === HYBRID AI SERVICE FUNCTIONS ===
+  const checkHybridServiceHealth = async () => {
+    try {
+      const health = await testHybridService();
+      setServiceStatus({
+        russian: { healthy: health.russian.healthy, latency: health.russian.latency },
+        gemini: { healthy: health.gemini.healthy, latency: health.gemini.latency },
+        active: health.hybrid.working ? (health.russian.healthy ? 'russian' : 'gemini') : 'unknown',
+        lastCheck: Date.now()
+      });
+    } catch (error) {
+      console.error('Ошибка проверки состояния сервисов:', error);
+      setServiceStatus(prev => ({ ...prev, lastCheck: Date.now() }));
+    }
   };
+
+  // Проверяем состояние сервисов при загрузке и каждые 30 секунд
+  useEffect(() => {
+    checkHybridServiceHealth();
+    const interval = setInterval(checkHybridServiceHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const triggerSave = async (key: string, data: any) => {
       setSaveStatus('saving');
@@ -829,6 +870,7 @@ const App = () => {
           setTimeout(() => setSaveStatus('idle'), 2000);
       } catch (e) {
           console.error("Save error:", e);
+          // Don't show global error for background saves to avoid annoyance, rely on IDB console logs
       }
   };
   
@@ -1085,9 +1127,19 @@ const App = () => {
   };
 
   const sendMessage = async (text: string, image?: string) => {
-    if (!activeChatId) return;
+    console.log(`🚀 [DEBUG] Начинаем sendMessage с текстом: "${text}"`);
+    console.log(`🚀 [DEBUG] Гибридный режим:`, hybridMode);
+    
+    if (!activeChatId) {
+      console.log(`❌ [DEBUG] Нет активного чата!`);
+      return;
+    }
+    
     const chatIndex = chats.findIndex(c => c.id === activeChatId);
-    if (chatIndex === -1) return;
+    if (chatIndex === -1) {
+      console.log(`❌ [DEBUG] Чаты не найден в списке!`);
+      return;
+    }
     
     // 1. Add User Message
     const userMsg: Message = {
@@ -1100,7 +1152,7 @@ const App = () => {
     };
     
     const newChats = [...chats];
-    let currentChat = { ...newChats[chatIndex] };
+    const currentChat = { ...newChats[chatIndex] };
     currentChat.messages = [...currentChat.messages, userMsg];
     currentChat.lastUpdated = Date.now();
     newChats[chatIndex] = currentChat;
@@ -1110,9 +1162,15 @@ const App = () => {
 
     // 2. AI Logic
     const participants = characters.filter(c => currentChat.participants.includes(c.id));
+    console.log(`🚀 [DEBUG] Найдено участников: ${participants.length}`, participants.map(p => p.name));
     let contextMessages = [...currentChat.messages];
 
-    for (const char of participants) {
+    console.log(`🚀 [DEBUG] Начинаем цикл генерации ответов для ${participants.length} персонажей`);
+    
+    for (let i = 0; i < participants.length; i++) {
+        const char = participants[i];
+        console.log(`🚀 [DEBUG] Обрабатываем персонажа ${i+1}/${participants.length}: ${char.name}`);
+        
         const placeholderId = generateId();
         const placeholderMsg: Message = {
             id: placeholderId,
@@ -1126,8 +1184,10 @@ const App = () => {
         chatForUpdate.messages = [...chatForUpdate.messages, placeholderMsg];
         newChats[chatIndex] = chatForUpdate;
         setChats([...newChats]);
+        console.log(`🚀 [DEBUG] Создан placeholder для ${char.name} с ID: ${placeholderId}`);
 
         try {
+            console.log(`🚀 [DEBUG] Вызываем streamCharacterResponse для ${char.name}...`);
              const otherCharNames = participants.filter(p => p.id !== char.id).map(p => p.name);
              
              // Inject height into bio for context
@@ -1203,31 +1263,19 @@ const App = () => {
              }
 
         } catch (e) {
-            console.error(e);
+            console.error(`❌ [DEBUG] Ошибка при генерации ответа для ${char.name}:`, e);
             const chatRef = newChats[chatIndex];
             chatRef.messages = chatRef.messages.filter(m => m.id !== placeholderId);
             newChats[chatIndex] = { ...chatRef };
             setChats([...newChats]);
+            console.log(`❌ [DEBUG] Удален placeholder для ${char.name} из-за ошибки`);
         }
     }
+    
+    console.log(`🚀 [DEBUG] Завершен цикл генерации ответов для всех персонажей`);
   };
 
-  if (isError) {
-      return (
-          <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white p-6 text-center">
-              <div className="bg-red-900/50 p-6 rounded-2xl border border-red-700 max-w-md">
-                  <h2 className="text-xl font-bold mb-4">Ошибка загрузки данных</h2>
-                  <p className="text-gray-300 mb-6">{globalError || "Не удалось получить доступ к хранилищу."}</p>
-                  <Button onClick={() => loadData()} variant="primary" className="w-full">
-                      Попробовать снова
-                  </Button>
-                  <p className="text-xs text-gray-500 mt-4">Не беспокойтесь, ваши данные в безопасности. Мы просто не можем их сейчас прочитать.</p>
-              </div>
-          </div>
-      );
-  }
-
-  if (!isDataLoaded) {
+  if (!isDataLoaded && !globalError) {
       return (
           <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
               <div className="flex flex-col items-center gap-4">
@@ -1240,7 +1288,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
-        {globalError && !isError && (
+        {globalError && (
              <div className="bg-red-900/90 text-white p-3 text-center fixed top-0 w-full z-50 backdrop-blur border-b border-red-700 animate-fade-in flex justify-between items-center px-6">
                  <span>⚠️ {globalError}</span>
                  <button onClick={() => setGlobalError(null)} className="text-red-200 hover:text-white">✕</button>
@@ -1261,6 +1309,112 @@ const App = () => {
                           <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-500 to-purple-500">x</span>
                           <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-500 to-purple-500 ml-2">AI</span>
                       </h1>
+                      
+                      {/* === HYBRID AI SERVICE CONTROLS === */}
+                      <div className="flex items-center gap-4 mt-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-400">Режим AI:</span>
+                            <div className="flex bg-gray-800 rounded-lg p-1">
+                                {(['auto', 'sfw', 'nsfw'] as const).map((mode) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setHybridMode(mode)}
+                                        className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${
+                                            hybridMode === mode
+                                                ? 'bg-accent-500 text-white shadow-lg'
+                                                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {mode === 'auto' && <AutoIcon />}
+                                        {mode === 'sfw' && <RussianIcon />}
+                                        {mode === 'nsfw' && <GeminiIcon />}
+                                        <span className="capitalize">{mode === 'auto' ? 'Авто' : mode === 'sfw' ? 'SFW' : 'NSFW'}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${
+                                serviceStatus.active === 'russian' ? 'bg-blue-500' :
+                                serviceStatus.active === 'gemini' ? 'bg-purple-500' :
+                                'bg-gray-500'
+                            } animate-pulse`} />
+                            <span className="text-xs text-gray-400">
+                                {serviceStatus.active === 'russian' ? 'Российский AI' :
+                                 serviceStatus.active === 'gemini' ? 'Gemini AI' :
+                                 'Неизвестно'}
+                            </span>
+                            <button 
+                                onClick={() => setShowServiceInfo(!showServiceInfo)}
+                                className="text-gray-500 hover:text-white p-1 rounded"
+                                title="Информация о сервисах"
+                            >
+                                <SettingsIcon />
+                            </button>
+                        </div>
+                      </div>
+                      
+                      {/* === SERVICE INFO PANEL === */}
+                      {showServiceInfo && (
+                          <div className="mt-4 p-4 bg-gray-900/80 backdrop-blur rounded-lg border border-gray-700 animate-fade-in">
+                              <div className="flex items-center justify-between mb-3">
+                                  <h3 className="text-sm font-bold text-gray-300">Статус AI Сервисов</h3>
+                                  <button 
+                                      onClick={() => setShowServiceInfo(false)}
+                                      className="text-gray-500 hover:text-white"
+                                  >
+                                      <CloseIcon />
+                                  </button>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                          <RussianIcon />
+                                          <span className="text-sm font-medium">Российский AI</span>
+                                          <div className={`w-2 h-2 rounded-full ${
+                                              serviceStatus.russian.healthy ? 'bg-green-500' : 'bg-red-500'
+                                          }`} />
+                                      </div>
+                                      <div className="text-xs text-gray-500 ml-6">
+                                          {serviceStatus.russian.healthy ? 
+                                              `Латентность: ${serviceStatus.russian.latency || 'N/A'}мс` :
+                                              'Недоступен'
+                                          }
+                                      </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                          <GeminiIcon />
+                                          <span className="text-sm font-medium">Gemini AI</span>
+                                          <div className={`w-2 h-2 rounded-full ${
+                                              serviceStatus.gemini.healthy ? 'bg-green-500' : 'bg-red-500'
+                                          }`} />
+                                      </div>
+                                      <div className="text-xs text-gray-500 ml-6">
+                                          {serviceStatus.gemini.healthy ? 
+                                              `Латентность: ${serviceStatus.gemini.latency || 'N/A'}мс` :
+                                              'Недоступен'
+                                          }
+                                      </div>
+                                  </div>
+                              </div>
+                              <div className="mt-3 pt-3 border-t border-gray-700">
+                                  <div className="flex items-center gap-2">
+                                      <HybridIcon />
+                                      <span className="text-xs text-gray-400">
+                                          Последняя проверка: {new Date(serviceStatus.lastCheck).toLocaleTimeString()}
+                                      </span>
+                                      <button 
+                                          onClick={checkHybridServiceHealth}
+                                          className="text-xs text-accent-400 hover:text-accent-300 ml-auto"
+                                      >
+                                          Обновить
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                      )}
                   </div>
                   <div className="flex gap-3">
                     <Button onClick={() => setPage(Page.GALLERY)} variant="secondary"><GalleryIcon /> Галерея</Button>
